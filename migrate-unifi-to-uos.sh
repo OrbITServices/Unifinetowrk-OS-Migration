@@ -108,6 +108,72 @@ else
 fi
 
 # ---------------------------------------------------------
+# 2a. Pre-check OS and Podman version BEFORE uninstalling old UniFi
+# ---------------------------------------------------------
+log "Checking OS and Podman compatibility for UniFi OS Server"
+
+# Read OS info
+if [[ -r /etc/os-release ]]; then
+  . /etc/os-release
+else
+  echo "ERROR: Cannot read /etc/os-release"
+  exit 1
+fi
+
+OS_NAME="${NAME:-Unknown}"
+OS_VERSION_ID="${VERSION_ID:-0}"
+
+echo "Detected OS: ${OS_NAME} ${OS_VERSION_ID}"
+
+# Compare versions using dpkg
+version_ge() {
+  dpkg --compare-versions "$1" ge "$2"
+}
+
+SUPPORTED_OS="false"
+
+case "${ID:-}" in
+  ubuntu)
+    if version_ge "$OS_VERSION_ID" "23.04"; then
+      SUPPORTED_OS="true"
+    fi
+    ;;
+  debian)
+    if version_ge "$OS_VERSION_ID" "12"; then
+      SUPPORTED_OS="true"
+    fi
+    ;;
+esac
+
+if [[ "$SUPPORTED_OS" != "true" ]]; then
+  echo "ERROR: Unsupported OS version: ${OS_NAME} ${OS_VERSION_ID}"
+  echo "UniFi OS Server requires Debian 12+ or Ubuntu 23.04+"
+  echo "Aborting before removing the existing UniFi installation."
+  exit 1
+fi
+
+# Check podman
+REQUIRED_PODMAN_VERSION="4.3.1"
+
+if ! command -v podman >/dev/null 2>&1; then
+  echo "ERROR: podman is not installed."
+  echo "UniFi OS Server requires podman ${REQUIRED_PODMAN_VERSION}+"
+  echo "Aborting before removing the existing UniFi installation."
+  exit 1
+fi
+
+CURRENT_PODMAN_VERSION="$(podman --version | awk '{print $3}')"
+echo "Detected podman version: ${CURRENT_PODMAN_VERSION}"
+
+if ! version_ge "$CURRENT_PODMAN_VERSION" "$REQUIRED_PODMAN_VERSION"; then
+  echo "ERROR: Installed podman version ${CURRENT_PODMAN_VERSION} is below the required minimum version ${REQUIRED_PODMAN_VERSION}"
+  echo "Aborting before removing the existing UniFi installation."
+  exit 1
+fi
+
+log "Compatibility checks passed"
+
+# ---------------------------------------------------------
 # 3. Stop old UniFi
 # ---------------------------------------------------------
 if [[ "${OLD_UNIFI_PRESENT}" == "true" ]]; then
